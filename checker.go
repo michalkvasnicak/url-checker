@@ -47,7 +47,7 @@ func main() {
 
 	// create database
 	sqlStmt := `
-		create table results (id integer not null primary key, url TEXT, regexp TEXT, matches TEXT, created_at INTEGER);
+		create table results (id integer not null primary key autoincrement, url TEXT, regexp TEXT, matches TEXT, created_at INTEGER);
 		delete from results;
 	`
 
