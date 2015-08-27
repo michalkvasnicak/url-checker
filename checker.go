@@ -4,16 +4,17 @@ import (
 	"os"
 	"fmt"
 	"encoding/csv"
+	"time"
 )
 
-func processFile(path string) {
+func processFile(path string) ([][]string, error) {
 	// open input file
 	csvFile, err := os.Open(path);
 
 	if err != nil {
 		fmt.Printf("Cannot open file %s because of %q\n", path, err)
 
-		os.Exit(1)
+		return nil, err
 	}
 
 	csvReader := csv.NewReader(csvFile)
@@ -24,15 +25,13 @@ func processFile(path string) {
 	if err != nil {
 		fmt.Printf("Error during reading of csv file %q\n", err)
 
-		os.Exit(1)
+		return nil, err
 	}
 
 	// close file
 	csvFile.Close()
 
-	for index, line := range lines {
-		fmt.Printf("Line %d %s %s\n", index, line[0], line[1])
-	}
+	return lines, nil
 }
 
 func main() {
@@ -52,5 +51,27 @@ func main() {
 		os.Exit(1)
 	}
 
-	processFile(inputFile)
+	tickerChan := time.NewTicker(time.Minute * 60).C
+	processChan := make(chan bool)
+
+	go func() {
+		processChan <- true // start processing
+	}()
+
+	for {
+		select {
+		case <- tickerChan:
+			processChan <- true
+		case <- processChan:
+			fmt.Printf("Processing started\n")
+
+			lines, err := processFile(inputFile)
+
+			if err != nil {
+				fmt.Printf("Error during processing file %q %q\n", err, lines)
+
+				os.Exit(1)
+			}
+		}
+	}
 }
