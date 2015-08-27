@@ -5,7 +5,49 @@ import (
 	"fmt"
 	"encoding/csv"
 	"time"
+	"net/http"
+	"regexp"
+	"io/ioutil"
 )
+
+func fetchAndMatchAgainstUrlContent(url, pattern string) ([]string, error) {
+	matcher, err := regexp.Compile(pattern)
+
+	if err != nil {
+		return nil, err
+	}
+
+	response, err := http.Get(url)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer response.Body.Close()
+
+	content, err := ioutil.ReadAll(response.Body)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return matcher.FindAllString(string(content), -1), nil
+}
+
+func processLine(line []string) {
+	fmt.Printf("Processing %s against pattern %s\n", line[0], line[1])
+
+	matches, err := fetchAndMatchAgainstUrlContent(line[0], line[1])
+
+	fmt.Printf("Processed %s, matched %s\n", line[0], matches)
+
+	if err != nil {
+		fmt.Printf("Error while processing line %q\n", err)
+
+		return
+	}
+}
+
 
 func processFile(path string) ([][]string, error) {
 	// open input file
@@ -71,6 +113,11 @@ func main() {
 				fmt.Printf("Error during processing file %q %q\n", err, lines)
 
 				os.Exit(1)
+			}
+
+			// for every line start go coroutine
+			for _, line := range lines {
+				go processLine(line)
 			}
 		}
 	}
