@@ -69,7 +69,7 @@ func main() {
 		return out
 	}
 
-	processChan := manager(time.NewTicker(time.Second).C)
+	processChan := manager(time.NewTicker(time.Minute * 60).C)
 	resultChan := make(chan *matchResult)
 
 	for {
