@@ -93,17 +93,28 @@ func main() {
 		os.Exit(1)
 	}
 
-	tickerChan := time.NewTicker(time.Minute * 60).C
-	processChan := make(chan bool)
+	manager := func(ticker <-chan time.Time) (chan time.Time) {
+		out := make(chan time.Time)
 
-	go func() {
-		processChan <- true // start processing
-	}()
+		// start immediately
+		go func() {
+			out <- time.Now()
+		}()
+
+		// listen to ticker
+		go func() {
+			for t := range ticker {
+				out <- t
+			}
+		}()
+
+		return out
+	}
+
+	processChan := manager(time.NewTicker(time.Minute * 60).C)
 
 	for {
 		select {
-		case <- tickerChan:
-			processChan <- true
 		case <- processChan:
 			fmt.Printf("Processing started\n")
 
