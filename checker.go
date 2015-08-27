@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"os"
 	"fmt"
 	"encoding/csv"
@@ -8,7 +9,15 @@ import (
 	"net/http"
 	"regexp"
 	"io/ioutil"
+	_ "github.com/mattn/go-sqlite3"
+	"log"
 )
+
+type matchResult struct{
+	url string
+	matches []string
+	created_at time.Time
+}
 
 func fetchAndMatchAgainstUrlContent(url, pattern string) ([]string, error) {
 	matcher, err := regexp.Compile(pattern)
@@ -34,7 +43,7 @@ func fetchAndMatchAgainstUrlContent(url, pattern string) ([]string, error) {
 	return matcher.FindAllString(string(content), -1), nil
 }
 
-func processLine(line []string) {
+func processLine(line []string, startedAt time.Time) (matchResult, error) {
 	fmt.Printf("Processing %s against pattern %s\n", line[0], line[1])
 
 	matches, err := fetchAndMatchAgainstUrlContent(line[0], line[1])
@@ -44,10 +53,11 @@ func processLine(line []string) {
 	if err != nil {
 		fmt.Printf("Error while processing line %q\n", err)
 
-		return
+		return matchResult{}, err
 	}
-}
 
+	return matchResult{line[0], matches, startedAt}, nil
+}
 
 func processFile(path string) ([][]string, error) {
 	// open input file
@@ -79,8 +89,7 @@ func processFile(path string) ([][]string, error) {
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Printf("Missing input file argument\n")
-
-		os.Exit(1)
+		log.Fatal()
 	}
 
 	var inputFile string = os.Args[1];
@@ -89,8 +98,27 @@ func main() {
 
 	if _, err := os.Stat(inputFile); os.IsNotExist(err) {
 		fmt.Printf("File %s does not exist\n", inputFile)
+		log.Fatal(err)
+	}
 
-		os.Exit(1)
+	// remove test db
+	os.Remove("./test.db")
+
+	db, err := sql.Open("sqlite3", "./test.db")
+
+	if err != nil {
+		fmt.Printf("Cannot open sqlite3 database %q\n", err)
+		log.Fatal(err)
+	}
+
+	// create database
+	sqlStmt := `
+		create table results (id integer not null primary key, url TEXT, matches TEXT, created_at INTEGER);
+		delete from results;
+	`
+
+	if _, err := db.Exec(sqlStmt); err != nil {
+		log.Fatal(err)
 	}
 
 	manager := func(ticker <-chan time.Time) (chan time.Time) {
@@ -116,6 +144,7 @@ func main() {
 	for {
 		select {
 		case <- processChan:
+			startedAt := time.Now()
 			fmt.Printf("Processing started\n")
 
 			lines, err := processFile(inputFile)
@@ -123,12 +152,12 @@ func main() {
 			if err != nil {
 				fmt.Printf("Error during processing file %q %q\n", err, lines)
 
-				os.Exit(1)
+				log.Fatal(err)
 			}
 
 			// for every line start go coroutine
 			for _, line := range lines {
-				go processLine(line)
+				go processLine(line, startedAt)
 			}
 		}
 	}
