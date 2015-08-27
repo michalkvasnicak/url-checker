@@ -11,11 +11,13 @@ import (
 	"io/ioutil"
 	_ "github.com/mattn/go-sqlite3"
 	"log"
+	"strings"
 )
 
 type matchResult struct{
 	url string
 	matches []string
+	pattern string
 	created_at time.Time
 }
 
@@ -29,7 +31,7 @@ func fetchAndMatchAgainstUrlContent(url, pattern string) ([]string, error) {
 	response, err := http.Get(url)
 
 	if err != nil {
-		return nil, err
+		return nil,  err
 	}
 
 	defer response.Body.Close()
@@ -56,7 +58,7 @@ func processLine(line []string, startedAt time.Time, output chan *matchResult) {
 		return
 	}
 
-	output <- &matchResult{line[0], matches, startedAt}
+	output <- &matchResult{line[0], matches, line[1], startedAt}
 }
 
 func processFile(path string) ([][]string, error) {
@@ -86,6 +88,23 @@ func processFile(path string) ([][]string, error) {
 	return lines, nil
 }
 
+func saveResult(result *matchResult, db *sql.DB) {
+	// find if there is same match
+	stmt, err := db.Prepare("INSERT INTO results (url, regexp, matches, created_at) VALUES ($1, $2, $3, $4)")
+
+	if err != nil {
+		fmt.Printf("Error preparing query %q\n", err)
+		return
+	}
+
+	if _, err := stmt.Query(result.url, result.pattern, strings.Join(result.matches, ""), result.created_at.Unix()); err != nil {
+		fmt.Printf("Error inserting result to db %q\n", err)
+		return
+	}
+
+	fmt.Printf("Result for %s and pattern %s saved\n", result.url, result.pattern)
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Printf("Missing input file argument\n")
@@ -113,7 +132,7 @@ func main() {
 
 	// create database
 	sqlStmt := `
-		create table results (id integer not null primary key, url TEXT, matches TEXT, created_at INTEGER);
+		create table results (id integer not null primary key, url TEXT, regexp TEXT, matches TEXT, created_at INTEGER);
 		delete from results;
 	`
 
@@ -146,6 +165,8 @@ func main() {
 		select {
 		case result := <- resultChan:
 			fmt.Printf("Received result for %s with %d matches\n", result.url, len(result.matches))
+
+			saveResult(result, db)
 		case <- processChan:
 			startedAt := time.Now()
 			fmt.Printf("Processing started\n")
