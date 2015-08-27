@@ -43,7 +43,7 @@ func fetchAndMatchAgainstUrlContent(url, pattern string) ([]string, error) {
 	return matcher.FindAllString(string(content), -1), nil
 }
 
-func processLine(line []string, startedAt time.Time) (matchResult, error) {
+func processLine(line []string, startedAt time.Time, output chan *matchResult) {
 	fmt.Printf("Processing %s against pattern %s\n", line[0], line[1])
 
 	matches, err := fetchAndMatchAgainstUrlContent(line[0], line[1])
@@ -53,10 +53,10 @@ func processLine(line []string, startedAt time.Time) (matchResult, error) {
 	if err != nil {
 		fmt.Printf("Error while processing line %q\n", err)
 
-		return matchResult{}, err
+		return
 	}
 
-	return matchResult{line[0], matches, startedAt}, nil
+	output <- &matchResult{line[0], matches, startedAt}
 }
 
 func processFile(path string) ([][]string, error) {
@@ -140,9 +140,12 @@ func main() {
 	}
 
 	processChan := manager(time.NewTicker(time.Minute * 60).C)
+	resultChan := make(chan *matchResult)
 
 	for {
 		select {
+		case result := <- resultChan:
+			fmt.Printf("Received result for %s with %d matches\n", result.url, len(result.matches))
 		case <- processChan:
 			startedAt := time.Now()
 			fmt.Printf("Processing started\n")
@@ -157,7 +160,7 @@ func main() {
 
 			// for every line start go coroutine
 			for _, line := range lines {
-				go processLine(line, startedAt)
+				go processLine(line, startedAt, resultChan)
 			}
 		}
 	}
