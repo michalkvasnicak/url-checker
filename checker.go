@@ -14,6 +14,9 @@ import (
 	"strings"
 )
 
+// global results
+var results map[string]string
+
 type matchResult struct{
 	url string
 	matches []string
@@ -140,6 +143,9 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// initiate map
+	results = make(map[string]string)
+
 	manager := func(ticker <-chan time.Time) (chan time.Time) {
 		out := make(chan time.Time)
 
@@ -166,7 +172,23 @@ func main() {
 		case result := <- resultChan:
 			fmt.Printf("Received result for %s with %d matches\n", result.url, len(result.matches))
 
-			saveResult(result, db)
+			// compare if result for given url + pattern is same as in map
+			key := fmt.Sprint(result.url, result.pattern)
+			matches := strings.Join(result.matches, "")
+
+			if savedMatches, ok := results[key]; ok {
+				if (savedMatches != matches) {
+					fmt.Printf("Contents of %s and pattern %s changed\n", result.url, result.pattern)
+
+					results[key] = matches
+					saveResult(result, db)
+				}
+			} else {
+				fmt.Printf("Matches for %s and pattern %s do not exist, saving\n", result.url, result.pattern)
+				results[key] =  matches
+
+				saveResult(result, db)
+			}
 		case <- processChan:
 			startedAt := time.Now()
 			fmt.Printf("Processing started\n")
