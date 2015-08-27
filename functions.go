@@ -82,14 +82,35 @@ func processFile(path string) ([][]string, error) {
 
 func saveResult(result *matchResult, db *sql.DB) {
 	// find if there is same match
-	stmt, err := db.Prepare("INSERT INTO results (url, regexp, matches, created_at) VALUES ($1, $2, $3, $4)")
+	existsQuery, err := db.Prepare("SELECT matches FROM results WHERE url = ? AND regexp = ? ORDER BY id DESC LIMIT 1")
 
 	if err != nil {
 		fmt.Printf("Error preparing query %q\n", err)
 		return
 	}
 
-	if _, err := stmt.Query(result.url, result.pattern, strings.Join(result.matches, ""), result.created_at.Unix()); err != nil {
+	var matches string
+
+	err = existsQuery.QueryRow(result.url, result.pattern).Scan(&matches)
+
+	if err != nil && err != sql.ErrNoRows {
+		fmt.Printf("Error %q\n", err)
+		return
+	}
+
+	if strings.Join(result.matches, "") == matches {
+		fmt.Printf("Skip %s and pattern %s\n", result.url, result.pattern)
+		return
+	}
+
+	writeQuery, err := db.Prepare("INSERT INTO results (url, regexp, matches, created_at) VALUES (?, ?, ?, ?)")
+
+	if err != nil {
+		fmt.Printf("Error preparing query %q\n", err)
+		return
+	}
+
+	if _, err := writeQuery.Exec(result.url, result.pattern, strings.Join(result.matches, ""), result.created_at.Unix()); err != nil {
 		fmt.Printf("Error inserting result to db %q\n", err)
 		return
 	}
